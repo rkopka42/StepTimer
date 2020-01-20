@@ -1,22 +1,24 @@
 /*
 Step - Treppenstufen Timer
+Anpassung f√ºr Arduino
 */
-
+/*
 #include <avr \io.h>
 #include <avr \interrupt.h>
 #include <avr \sleep.h>
-
+*/
 /*
 all my ATtiny85 chips have their 8MHz fuse set
 by default they run at 1MHz, so adjust accordingly
 this constant is used by delay.h, so make sure it stays above the include
 */
-#define F_CPU 9600000
-#include <util \delay.h>
+//#define F_CPU 9600000
+//#include <util \delay.h>
 
-#include <avr/interrupt.h>
+//#include <avr/interrupt.h>
 
-#define TREPPE ((_BV(4) & PINB ) !=0)
+//#define TREPPE ((_BV(4) & PINB ) !=0)
+#define TREPPE D4 // ????
 
 typedef struct {
         uint8_t on ;          //50ms
@@ -28,15 +30,15 @@ BEEP_T beep_muster []=
 {
         {0,  100, 100}, // off
         {10, 2,    7},  // Warnzeit
-        {2,  3,    5},  // Stufe f‰hrt
+        {2,  3,    5},  // Stufe f√§hrt
         {10, 1,    3},  // Nachlauf
         {1,  1,    2},  // Fehlerfall
-        {1,  20,   4}   // Stufe sp‰ter runter
+        {1,  20,   4}   // Stufe sp√§ter runter
 };
 
 volatile uint8_t   beep_value       =1;
 volatile uint8_t   timer_cnt        =0;
-volatile uint16_t high_timer_cnt=0;       // 50ms Timer, bis zum ‹berlauf wird es wohl kaum kommen (3276sek ~1h)
+volatile uint16_t high_timer_cnt=0;       // 50ms Timer, bis zum √úberlauf wird es wohl kaum kommen (3276sek ~1h)
 
 volatile int     change_flag  =0;
 
@@ -46,14 +48,18 @@ void  do_beep (int ton)
         change_flag=1;
 }
 
-ISR(TIM0_OVF_vect )
+// PWM kann nicht einfach invertiert laufen oder ???
+// kann das schnell genug sein, oder auch IRQ ?
+
+//ISR(TIM0_OVF_vect )
+void run_beep(void)
 {
    static uint8_t beep_cnt_end =0;
    static uint8_t pitch_cnt =0;
    static uint8_t beep_cnt =0;
    static uint8_t beep_on =0;
 
-// 2.Pin inverse f¸r lauteren Ton
+// 2.Pin inverse f√ºr lauteren Ton
 
         // Tonerzeugung, Frequenz 5kHz / 2 / cnt_pitch
         pitch_cnt++;
@@ -78,13 +84,13 @@ ISR(TIM0_OVF_vect )
         timer_cnt++;
         if ( timer_cnt>238 || change_flag )        // 50ms
         {      
-               // Sound wurde nicht ge‰ndert
+               // Sound wurde nicht ge√§ndert
                if (! change_flag)
                {
                       timer_cnt=0;
                       high_timer_cnt++;                 
                }
-               else   // Sound wurde ge‰ndert
+               else   // Sound wurde ge√§ndert
                {
                       change_flag = 0;
                       beep_cnt_end=0;
@@ -111,11 +117,21 @@ ISR(TIM0_OVF_vect )
         }
 }
 
-int main (int argc, char ** argv)
-{
- uint8_t state = 1, old_treppe=0;
- uint16_t c=0;
+uint8_t state = 1, old_treppe=0;
+uint16_t c=0;
 
+setup ()
+{
+
+        // achtung andere Pins !?
+ D0 output        _BV(0)  PB6AddOn -> Sound
+        // _BV(1)  PB7AddOn -> Relais
+        // _BV(2)  PB8AddOn -> Test-> Sound invers
+        // _BV(3) Test Ausgang PB5 Addon  -> Sound AN Signal f√ºr externen Summer
+       
+ D4 input       // _BV(4) als Input eingang  PB4 Addon
+ 
+ /*
  // go from internal 9,6MHz /8 -> /1
  CLKPR = _BV( CLKPCE) ;
  CLKPR = 0 ;
@@ -127,7 +143,7 @@ int main (int argc, char ** argv)
         // _BV(0)  PB6AddOn -> Sound
         // _BV(1)  PB7AddOn -> Relais
         // _BV(2)  PB8AddOn -> Test-> Sound invers
-        // _BV(3) Test Ausgang PB5 Addon  -> Sound AN Signal f¸r externen Summer
+        // _BV(3) Test Ausgang PB5 Addon  -> Sound AN Signal f√ºr externen Summer
        
         // _BV(4) als Input eingang  PB4 Addon
  
@@ -136,17 +152,18 @@ int main (int argc, char ** argv)
  //prescale timer to 8
  TCCR0B |= (1<< CS01);
  
- // 9,6MHz / 8 -> 1,2MHz  mit Timer 256 -> 4687Hz  213us ‹berlauf
+ // 9,6MHz / 8 -> 1,2MHz  mit Timer 256 -> 4687Hz  213us √úberlauf
  
  //enable timer overflow interrupt
  TIMSK0 |= (1<< TOIE0);
 
  sei();
- 
+ */
  do_beep(0);
+}
 
- while(1)
- {
+loop()
+{
         switch ( state)
         {
                case 1:      // Start
@@ -223,6 +240,6 @@ int main (int argc, char ** argv)
                       state = 10;  // for nothing to happen
                       break;
         } // switch
- } //while
 }
+
 // Ende
