@@ -7,11 +7,7 @@ Sketch uses 1710 bytes (83%) of program storage space. Maximum is 2048 bytes.
 Global variables use 51 bytes (39%) of dynamic memory, leaving 77 bytes for local variables. Maximum is 128 bytes.
 
 */
-/*
-#include <avr \io.h>
-#include <avr \interrupt.h>
-#include <avr \sleep.h>
-*/
+
 /*
 all my ATtiny85 chips have their 8MHz fuse set
 by default they run at 1MHz, so adjust accordingly
@@ -27,22 +23,27 @@ this constant is used by delay.h, so make sure it stays above the include
 #endif
 
 #ifdef ATTINY
-  #define TREPPE_IN 4 // PB4 Pin3
-  #define RELAIS    1  // Pin6   PB1
-  #define SOUND_INV 0    // Pin5  PB0
-  #define SOUND     3     // Pin2 PB3
-  #define TEST      2   // Pin7   PB2
+  #define TREPPE_IN 4   // Pin3 PB4 
+  #define RELAIS    1   // Pin6 PB1
+  #define SOUND_INV 0   // Pin5 PB0
+  #define SOUND     3   // Pin2 PB3
+  #define TEST      2   // Pin7 PB2
 #else   // Arduino UNO
-  #define TREPPE_IN 4   // PB4 Pin3
-  #define RELAIS    6   // Pin6   PB1
-  #define SOUND_INV 5    // Pin5  PB0
-  #define SOUND     3     // Pin2 PB3
-  #define TEST      2   // Pin7   PB2
+  #define TREPPE_IN 4 
+  #define RELAIS    6 
+  #define SOUND_INV 5 
+  #define SOUND     3 
+  #define TEST      2 
+  #define START      7 
 #endif   
 
-#define TREPPE digitalRead(TREPPE_IN)
+#ifdef ATTINY    
+ #define TREPPE digitalRead(TREPPE_IN)
+#else 
+ #define TREPPE (!digitalRead(TREPPE_IN))
+#endif
 
-#define TIME_START  2000
+#define TIME_START  2000  // ms
 #define TIME_RELAIS 3000
 #define TIME_AFTER  500
 #define TIME_ERROR  10000
@@ -64,24 +65,36 @@ this constant is used by delay.h, so make sure it stays above the include
 typedef struct {
         uint8_t on ;          //50ms
         uint8_t off ;
-        uint8_t cnt_pitch ;  // 4-600Hz
+        uint8_t cnt_pitch ;  // Frequenz Vorteiler (4-600Hz)
 } BEEP_T ;
+
+/*
+BEEP_T beep_muster []=
+{
+  {0,  100, 100}, // off
+  {10, 2,    7},  // Warnzeit
+  {2,  3,    5},  // Stufe fährt
+  {10, 1,    3},  // Nachlauf
+  {1,  1,    2},  // Fehlerfall
+  {1,  20,   4}   // Stufe später runter
+};
+*/
 
 BEEP_T beep_muster []=
 {
-        {0,  100, 100}, // off
-        {10, 2,    7},  // Warnzeit
-        {2,  3,    5},  // Stufe fährt
-        {10, 1,    3},  // Nachlauf
-        {1,  1,    2},  // Fehlerfall
-        {1,  20,   4}   // Stufe später runter
+  {0,  100, 100}, // off
+  {10, 2,    4},  // Warnzeit
+  {2,  3,    2},  // Stufe fährt
+  {10, 1,    3},  // Nachlauf
+  {1,  1,    1},  // Fehlerfall
+  {1,  20,   2}   // Stufe später runter
 };
 
-volatile uint8_t   beep_value       =1;
-volatile uint8_t   timer_cnt        =0;
-volatile uint16_t high_timer_cnt=0;       // 50ms Timer, bis zum Überlauf wird es wohl kaum kommen (3276sek ~1h)
 
-volatile int     change_flag  =0;
+volatile uint8_t  beep_value       =1;
+volatile uint8_t  timer_cnt        =0;
+volatile uint16_t high_timer_cnt=0;       // 50ms Timer, bis zum Überlauf wird es wohl kaum kommen (3276sek ~1h)
+volatile int      change_flag  =0;
 
 unsigned long nextstep;
 unsigned long now_;
@@ -100,6 +113,7 @@ void do_beep(int ton)
 // ist OK, solange die loop schneller als 2 x millis() ist 
 
 //ISR(TIM0_OVF_vect )
+// theorteisch alle 1ms
 void run_beep(void)
 {
   static uint8_t beep_cnt_end =0;
@@ -110,6 +124,7 @@ void run_beep(void)
 // 2.Pin invers für lauteren Ton
 
   // Tonerzeugung, Frequenz 5kHz / 2 / cnt_pitch
+  // 1kHz / cnt_pitch
   pitch_cnt++;
   if ( pitch_cnt >= beep_muster[ beep_value].cnt_pitch )
   {                     // 3-600Hz
@@ -169,8 +184,10 @@ void run_beep(void)
 
 void setup()
 {
-  pinMode(TREPPE_IN, INPUT);
- 
+  pinMode(TREPPE_IN, INPUT_PULLUP);
+#ifndef ATTINY  
+ pinMode(START, INPUT_PULLUP);
+#endif
   pinMode(RELAIS, OUTPUT);
   pinMode(SOUND_INV, OUTPUT);
   pinMode(SOUND, OUTPUT);
@@ -203,12 +220,16 @@ void setup()
 
 void loop()
 {
+#ifndef ATTINY    
+  if (!digitalRead(START))  return;
+#endif
+  
   now_=millis();
 
   if (now_ >= b)
   {
     run_beep();
-    b=now_+2;   //2ms 500Hz ???
+    b=now_+1;   //2ms 500Hz ???
   }
   
   switch ( state)
