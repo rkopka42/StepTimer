@@ -69,32 +69,34 @@ typedef struct {
 } BEEP_T ;
 
 /*
+  // Tonerzeugung, Frequenz 5kHz / 2 / cnt_pitch
 BEEP_T beep_muster []=
 {
   {0,  100, 100}, // off
-  {10, 2,    7},  // Warnzeit
-  {2,  3,    5},  // Stufe fährt
-  {10, 1,    3},  // Nachlauf
-  {1,  1,    2},  // Fehlerfall
-  {1,  20,   4}   // Stufe später runter
+  {10, 2,    7},  // Warnzeit   357Hz
+  {2,  3,    5},  // Stufe fährt  500Hz
+  {10, 1,    3},  // Nachlauf     833Hz
+  {1,  1,    2},  // Fehlerfall   1250Hz
+  {1,  20,   4}   // Stufe später runter  625Hz
 };
 */
 
+// mit 1ms  recht ähnlich
 BEEP_T beep_muster []=
 {
   {0,  100, 100}, // off
-  {10, 2,    4},  // Warnzeit
-  {2,  3,    2},  // Stufe fährt
-  {10, 1,    3},  // Nachlauf
-  {1,  1,    1},  // Fehlerfall
-  {1,  20,   2}   // Stufe später runter
+  {10, 2,    3},  // Warnzeit 333Hz
+  {2,  3,    2},  // Stufe fährt    500Hz
+  {10, 1,    4},  // Nachlauf   250Hz
+  {1,  1,    1},  // Fehlerfall   1kHz
+  {1,  20,   2}   // Stufe später runter  500Hz
 };
 
 
-volatile uint8_t  beep_value       =1;
-volatile uint8_t  timer_cnt        =0;
+volatile uint8_t  beep_value    =1;
+volatile uint8_t  timer_cnt     =0;
 volatile uint16_t high_timer_cnt=0;       // 50ms Timer, bis zum Überlauf wird es wohl kaum kommen (3276sek ~1h)
-volatile int      change_flag  =0;
+volatile int      change_flag   =0;
 
 unsigned long nextstep;
 unsigned long now_;
@@ -106,6 +108,11 @@ void do_beep(int ton)
 {
   beep_value = ton;
   change_flag=1;
+
+#ifndef ATTINY 
+  Serial.println("Beep:" + String(beep_value));
+#endif
+    
 }
 
 // PWM kann nicht einfach invertiert laufen oder ??? Man könnte den Pin auslesen und invers rausschreiben in der Loop ????????
@@ -113,7 +120,7 @@ void do_beep(int ton)
 // ist OK, solange die loop schneller als 2 x millis() ist 
 
 //ISR(TIM0_OVF_vect )
-// theorteisch alle 1ms
+// theoretisch alle 1ms
 void run_beep(void)
 {
   static uint8_t beep_cnt_end =0;
@@ -147,7 +154,7 @@ void run_beep(void)
 
   // Haupttimer 50ms
   timer_cnt++;
-  if ( timer_cnt>238 || change_flag )        // 50ms
+  if ( timer_cnt>50 || change_flag )        // 50ms
   {      
      // Sound wurde nicht geändert
     if (! change_flag)
@@ -183,10 +190,13 @@ void run_beep(void)
 }
 
 void setup()
-{
+{  
   pinMode(TREPPE_IN, INPUT_PULLUP);
 #ifndef ATTINY  
  pinMode(START, INPUT_PULLUP);
+
+  Serial.begin(115200); // Debug
+  Serial.println("\nTreppe\n");
 #endif
   pinMode(RELAIS, OUTPUT);
   pinMode(SOUND_INV, OUTPUT);
@@ -198,30 +208,21 @@ void setup()
   digitalWrite(RELAIS,LOW);
   digitalWrite(TEST,LOW);
 
- /*
- // go from internal 9,6MHz /8 -> /1
- CLKPR = _BV( CLKPCE) ;
- CLKPR = 0 ;
- 
- cli();
-  
- //prescale timer to 8
- TCCR0B |= (1<< CS01);
- 
- // 9,6MHz / 8 -> 1,2MHz  mit Timer 256 -> 4687Hz  213us Überlauf
- 
- //enable timer overflow interrupt
- TIMSK0 |= (1<< TOIE0);
-
- sei();
- */
- do_beep(BEEP_OFF);
+  do_beep(BEEP_OFF);
 }
+
+int oldstate=-1;
 
 void loop()
 {
-#ifndef ATTINY    
-  if (!digitalRead(START))  return;
+#ifndef ATTINY        // Testbetrieb mit UNO
+  if (!digitalRead(START))  
+  {
+    state=STEP_WAIT;  // neu beginnen, falls nicht der erste Test
+    delay(1000);
+    Serial.print(".");
+    return;   // erst bei Taste anfangen, sonst einfach Abbruch
+  }   
 #endif
   
   now_=millis();
@@ -229,15 +230,23 @@ void loop()
   if (now_ >= b)
   {
     run_beep();
-    b=now_+1;   //2ms 500Hz ???
+    b=now_+1;   //1ms 1000Hz ???
   }
+
+#ifndef ATTINY 
+  if (state != oldstate)
+  {
+    Serial.println("State:" + String(state));
+    oldstate=state;
+  }
+#endif
   
   switch ( state)
   {
     case STEP_WAIT:      // Start
-      if ( TREPPE) 
+      if ( TREPPE)    // Treppe ist schon oben -> fertig
       {
-        state = 10;
+        state = STEP_END;
         do_beep(BEEP_OFF);
       }
       else
@@ -259,14 +268,14 @@ void loop()
      break; 
 
     case STEP_TREPPE:      // 3Sek Stufe hoch
-      if ( TREPPE)
+      if ( TREPPE)      // Treppe ist oben angekommen
       {     // nur Nachlauf                          
         nextstep=now_ + TIME_AFTER;
         state=STEP_AFTER;
         do_beep(BEEP_AFTER);
       }
 
-      if ( nextstep<=now_ )
+      if ( nextstep<=now_ )   // nach 3sek ist die Treppe noch nicht oben -> Fehler
       {     // Fehlerfall !!!!!!
         digitalWrite(RELAIS,LOW);  // Relais aus
         nextstep=now_ + TIME_ERROR;// Zeit abgelaufen 10sek Signal
@@ -275,7 +284,7 @@ void loop()
       }     
      break;
 
-    case STEP_AFTER:      // 0,5sek Nachlauf
+    case STEP_AFTER:      // 0,5sek Nachlauf - nach dem Schalter noch etwas weiter, damit sie auch wirklich am Anschlag ist
       if ( nextstep<=now_ )
       {
         state=STEP_END;
@@ -291,16 +300,25 @@ void loop()
         state=STEP_END;
         do_beep(BEEP_OFF);
       }
+
+      if ( TREPPE)      // Treppe ist doch oben angekommen -> kann das passieren ?
+      {     // nur Nachlauf                          
+        nextstep=now_ + TIME_AFTER;
+        state=STEP_AFTER;
+        do_beep(BEEP_AFTER);
+      }
      break;
 
     case STEP_END:     // Ende, alles aus und Endlosschleife.
       digitalWrite(RELAIS,LOW);   // Relais aus - nur um sicher zu sein
       if ( old_treppe != TREPPE)
-      {             // falls Treppe jetzt runter kommt, nur schwaches Signal
+      {             // falls Treppe jetzt wieder runter kommt, nur schwaches Signal
         if (! TREPPE)  do_beep(BEEP_LATER);
         else           do_beep(BEEP_OFF);
         old_treppe = TREPPE;
       }
+
+// Sleep ???      
      break;
 
     default:
