@@ -1,22 +1,12 @@
 /*
 Step - Treppenstufen Timer
-Anpassung für Arduino
+Anpassung für Arduino - PWM Version
 
 ATTiny25 reicht
 Sketch uses 1710 bytes (83%) of program storage space. Maximum is 2048 bytes.
 Global variables use 51 bytes (39%) of dynamic memory, leaving 77 bytes for local variables. Maximum is 128 bytes.
 
 */
-
-/*
-all my ATtiny85 chips have their 8MHz fuse set
-by default they run at 1MHz, so adjust accordingly
-this constant is used by delay.h, so make sure it stays above the include
-*/
-//#define F_CPU 9600000
-//#include <util \delay.h>
-
-//#include <avr/interrupt.h>
 
 #if defined(__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__)
 #define ATTINY
@@ -80,7 +70,7 @@ BEEP_T beep_muster []=
   {1,  20,   4}   // Stufe später runter  625Hz
 };
 */
-
+/*
 // mit 1ms  recht ähnlich
 BEEP_T beep_muster []=
 {
@@ -91,99 +81,85 @@ BEEP_T beep_muster []=
   {1,  1,    1},  // Fehlerfall   1kHz
   {1,  20,   2}   // Stufe später runter  500Hz
 };
+*/
+// PWM
+BEEP_T beep_muster []=
+{
+  {0,  0,  0}, // off
+  {10, 2,    357},  // Warnzeit   357Hz
+  {2,  3,    500},  // Stufe fährt  500Hz
+  {10, 1,    833},  // Nachlauf     833Hz
+  {1,  1,    1250},  // Fehlerfall   1250Hz
+  {1,  20,   625}   // Stufe später runter  625Hz
+};
 
+uint8_t  beep_value    =1;  // Index
+bool     change_flag   =false;  // ein anderer Beep wurde verlangt
 
-volatile uint8_t  beep_value    =1;
-volatile uint8_t  timer_cnt     =0;
-volatile uint16_t high_timer_cnt=0;       // 50ms Timer, bis zum Überlauf wird es wohl kaum kommen (3276sek ~1h)
-volatile int      change_flag   =0;
+unsigned long nextstep; // nächster Statemachine Wechsel
+unsigned long now_;     // millis() Wert
+unsigned long b=0;      // für beep Timer
 
-unsigned long nextstep;
-unsigned long now_;
-unsigned long b=0;  // für beep ?
+uint8_t state    = STEP_WAIT;
+bool    old_treppe=false;   // Abfrage Änderung beim Treppenkontakt
+bool    beep_on  = false;   // Ein Ton, keine Pause
 
-uint8_t state = STEP_WAIT, old_treppe=0;
+#ifndef ATTINY 
+int     oldstate = -1;  // nur für Ausgabe
+#endif
 
+// einen neuen/anderen Beep beginnen
 void do_beep(int ton)
 {
   beep_value = ton;
-  change_flag=1;
+  change_flag = true;
 
 #ifndef ATTINY 
   Serial.println("Beep:" + String(beep_value));
 #endif
-    
+   if (ton==BEEP_OFF)  
+   {
+      noTone(SOUND);
+      digitalWrite(SOUND_INV,LOW);
+   }
 }
 
-// PWM kann nicht einfach invertiert laufen oder ??? Man könnte den Pin auslesen und invers rausschreiben in der Loop ????????
-// kann das schnell genug sein, oder auch IRQ ?
-// ist OK, solange die loop schneller als 2 x millis() ist 
-
-//ISR(TIM0_OVF_vect )
-// theoretisch alle 1ms
+// Haupttimer 50ms
 void run_beep(void)
 {
-  static uint8_t beep_cnt_end =0;
-  static uint8_t pitch_cnt =0;
-  static uint8_t beep_cnt =0;
-  static uint8_t beep_on =0;
-
-// 2.Pin invers für lauteren Ton
-
-  // Tonerzeugung, Frequenz 5kHz / 2 / cnt_pitch
-  // 1kHz / cnt_pitch
-  pitch_cnt++;
-  if ( pitch_cnt >= beep_muster[ beep_value].cnt_pitch )
-  {                     // 3-600Hz
-     pitch_cnt=0;
-     if ( beep_on)
-     {
-        digitalWrite(TEST,HIGH);  // nur an
-        //PORTB ^= (_BV(0));   //toggle pin -> Sound
-        //PORTB ^= (_BV(2));   //toggle pin -> Sound
-        digitalWrite(SOUND,!digitalRead(SOUND));
-        digitalWrite(SOUND_INV,!digitalRead(SOUND_INV));                      
-     }
-     else
-     {
-        digitalWrite(TEST,LOW); 
-        digitalWrite(SOUND,LOW);
-        digitalWrite(SOUND_INV,HIGH);
-     }
+  static uint8_t beep_cnt_end =0; // Endzeit des Tons in 50ms Einheiten
+  static uint8_t beep_cnt =0;     // Zeit in 50ms seit Beginn des Tons
+  // könnte man auch direkt mit ms Werten machen
+  
+   // Sound wurde nicht geändert
+  if (change_flag)   // Sound wurde geändert
+  {
+    change_flag = false;
+    beep_cnt_end=0;
+    beep_on = false;
+    noTone(SOUND); 
   }
 
-  // Haupttimer 50ms
-  timer_cnt++;
-  if ( timer_cnt>50 || change_flag )        // 50ms
-  {      
-     // Sound wurde nicht geändert
-    if (! change_flag)
+  // Soundmuster spielen            
+  beep_cnt++;
+  if ( beep_cnt > beep_cnt_end)
+  {
+    if ( beep_on)
     {
-      timer_cnt=0;
-      high_timer_cnt++;                 
+      beep_cnt=0;
+      beep_cnt_end = beep_muster[ beep_value].off ;
+      beep_on=false;
+      noTone(SOUND);  
     }
-    else   // Sound wurde geändert
+    else
     {
-      change_flag = 0;
-      beep_cnt_end=0;
-      beep_on = 0;
-    }
-
-    // Soundmuster spielen            
-    beep_cnt++;
-    if ( beep_cnt > beep_cnt_end)
-    {
-      if ( beep_on)
+      beep_cnt=0;
+      beep_cnt_end = beep_muster[ beep_value].on ;
+      if ( beep_cnt_end!=0)  
       {
-        beep_cnt=0;
-        beep_cnt_end = beep_muster[ beep_value].off ;
-        beep_on=0;
-      }
-      else
-      {
-        beep_cnt=0;
-        beep_cnt_end = beep_muster[ beep_value].on ;
-        if ( beep_cnt_end!=0)  beep_on=1;
+        beep_on=true;
+        //tone(SOUND, beep_muster[ beep_value].cnt_pitch ,beep_muster[ beep_value].on); // automatisches Abschalten geht nicht ??
+        tone(SOUND, beep_muster[ beep_value].cnt_pitch); 
       }
     }
   }
@@ -193,7 +169,7 @@ void setup()
 {  
   pinMode(TREPPE_IN, INPUT_PULLUP);
 #ifndef ATTINY  
- pinMode(START, INPUT_PULLUP);
+  pinMode(START, INPUT_PULLUP);
 
   Serial.begin(115200); // Debug
   Serial.println("\nTreppe\n");
@@ -211,8 +187,6 @@ void setup()
   do_beep(BEEP_OFF);
 }
 
-int oldstate=-1;
-
 void loop()
 {
 #ifndef ATTINY        // Testbetrieb mit UNO
@@ -221,16 +195,23 @@ void loop()
     state=STEP_WAIT;  // neu beginnen, falls nicht der erste Test
     delay(1000);
     Serial.print(".");
+    noTone(SOUND);
     return;   // erst bei Taste anfangen, sonst einfach Abbruch
   }   
 #endif
-  
+
+// 2.Pin invers für lauteren Ton
+  if (beep_on)  
+    digitalWrite(SOUND_INV, !digitalRead(SOUND));
+  else
+    digitalWrite(SOUND_INV, digitalRead(SOUND));
+    
   now_=millis();
 
   if (now_ >= b)
   {
     run_beep();
-    b=now_+1;   //1ms 1000Hz ???
+    b=now_+50;   //50ms Auflösung Tonlänge
   }
 
 #ifndef ATTINY 
@@ -323,6 +304,7 @@ void loop()
 
     default:
       state = STEP_END;  // for nothing to happen, kein neuerliches Anfangen
+      do_beep(BEEP_OFF);
       break;
   } // switch
 }
