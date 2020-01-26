@@ -2,10 +2,14 @@
 Step - Treppenstufen Timer
 Anpassung für Arduino - PWM Version
 
-ATTiny25 reicht
+ATTiny25 reicht in der Arduino Version
 Sketch uses 1710 bytes (83%) of program storage space. Maximum is 2048 bytes.
 Global variables use 51 bytes (39%) of dynamic memory, leaving 77 bytes for local variables. Maximum is 128 bytes.
 
+in der PWM Version braucht es mehr, vermutlich wegen millis() und tone() -> ATTiny45
+Sketch uses 2480 bytes (60%) of program storage space. Maximum is 4096 bytes.
+Global variables use 57 bytes (22%) of dynamic memory, leaving 199 bytes for local variables. Maximum is 256 bytes.
+dafür Tabelle mit ms und Hz
 */
 
 #if defined(__AVR_ATtiny25__) || defined(__AVR_ATtiny45__) || defined(__AVR_ATtiny85__)
@@ -53,44 +57,20 @@ Global variables use 51 bytes (39%) of dynamic memory, leaving 77 bytes for loca
 #define BEEP_LATER  5
 
 typedef struct {
-        uint8_t on ;          //50ms
+        uint8_t on ;          //ms
         uint8_t off ;
-        uint8_t cnt_pitch ;  // Frequenz Vorteiler (4-600Hz)
+        uint8_t freq ;  // Frequenz Hz
 } BEEP_T ;
 
-/*
-  // Tonerzeugung, Frequenz 5kHz / 2 / cnt_pitch
+// PWM mit ms
 BEEP_T beep_muster []=
 {
-  {0,  100, 100}, // off
-  {10, 2,    7},  // Warnzeit   357Hz
-  {2,  3,    5},  // Stufe fährt  500Hz
-  {10, 1,    3},  // Nachlauf     833Hz
-  {1,  1,    2},  // Fehlerfall   1250Hz
-  {1,  20,   4}   // Stufe später runter  625Hz
-};
-*/
-/*
-// mit 1ms  recht ähnlich
-BEEP_T beep_muster []=
-{
-  {0,  100, 100}, // off
-  {10, 2,    3},  // Warnzeit 333Hz
-  {2,  3,    2},  // Stufe fährt    500Hz
-  {10, 1,    4},  // Nachlauf   250Hz
-  {1,  1,    1},  // Fehlerfall   1kHz
-  {1,  20,   2}   // Stufe später runter  500Hz
-};
-*/
-// PWM
-BEEP_T beep_muster []=
-{
-  {0,  0,  0}, // off
-  {10, 2,    357},  // Warnzeit   357Hz
-  {2,  3,    500},  // Stufe fährt  500Hz
-  {10, 1,    833},  // Nachlauf     833Hz
-  {1,  1,    1250},  // Fehlerfall   1250Hz
-  {1,  20,   625}   // Stufe später runter  625Hz
+  {0,  0,  0},         // off
+  {500, 100,    357},  // Warnzeit   357Hz
+  {100, 150,    500},  // Stufe fährt  500Hz
+  {500, 50,     833},  // Nachlauf     833Hz
+  {50,  50,    1250},  // Fehlerfall   1250Hz
+  {50,  1000,   625}   // Stufe später runter  625Hz
 };
 
 uint8_t  beep_value    =1;  // Index
@@ -98,7 +78,7 @@ bool     change_flag   =false;  // ein anderer Beep wurde verlangt
 
 unsigned long nextstep; // nächster Statemachine Wechsel
 unsigned long now_;     // millis() Wert
-unsigned long b=0;      // für beep Timer
+unsigned long beep_cnt_end=millis()+1; // Endzeit des Tons in ms
 
 uint8_t state    = STEP_WAIT;
 bool    old_treppe=false;   // Abfrage Änderung beim Treppenkontakt
@@ -124,42 +104,36 @@ void do_beep(int ton)
    }
 }
 
-// Haupttimer 50ms
+// Beep Handling
 void run_beep(void)
 {
-  static uint8_t beep_cnt_end =0; // Endzeit des Tons in 50ms Einheiten
-  static uint8_t beep_cnt =0;     // Zeit in 50ms seit Beginn des Tons
-  // könnte man auch direkt mit ms Werten machen
-  
-   // Sound wurde nicht geändert
   if (change_flag)   // Sound wurde geändert
   {
     change_flag = false;
-    beep_cnt_end=0;
+    beep_cnt_end=now_+1;
     beep_on = false;
     noTone(SOUND); 
   }
 
-  // Soundmuster spielen            
-  beep_cnt++;
-  if ( beep_cnt > beep_cnt_end)
+  // Soundmuster spielen, falls nicht OFF
+  if (beep_muster[ beep_value].on >0 and beep_muster[ beep_value].off >0)
   {
-    if ( beep_on)
+    if ( beep_cnt_end < now_) // Zeit abgelaufen
     {
-      beep_cnt=0;
-      beep_cnt_end = beep_muster[ beep_value].off ;
-      beep_on=false;
-      noTone(SOUND);  
-    }
-    else
-    {
-      beep_cnt=0;
-      beep_cnt_end = beep_muster[ beep_value].on ;
-      if ( beep_cnt_end!=0)  
+      if ( beep_on)   // Ton war an, jetzt aus
       {
-        beep_on=true;
-        //tone(SOUND, beep_muster[ beep_value].cnt_pitch ,beep_muster[ beep_value].on); // automatisches Abschalten geht nicht ??
-        tone(SOUND, beep_muster[ beep_value].cnt_pitch); 
+        beep_cnt_end = beep_muster[ beep_value].off + now_ ;
+        beep_on=false;
+        noTone(SOUND);  
+      }
+      else    // Ton war aus, jetzt an
+      {
+        beep_cnt_end = beep_muster[ beep_value].on + now_;
+        if (beep_muster[ beep_value].on >0)
+        {
+          beep_on=true;
+          tone(SOUND, beep_muster[ beep_value].freq); 
+        }
       }
     }
   }
@@ -208,11 +182,7 @@ void loop()
     
   now_=millis();
 
-  if (now_ >= b)
-  {
-    run_beep();
-    b=now_+50;   //50ms Auflösung Tonlänge
-  }
+  run_beep();
 
 #ifndef ATTINY 
   if (state != oldstate)
