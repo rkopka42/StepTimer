@@ -53,3 +53,8 @@ Die Elektronik ist in einem kleinen Kästchen unter dem Herd eingebaut.
 
 Gedanken
 Ich frage mich aber schon, warum die Hersteller so ein Geheimnis um die Verkabelung ihrer Womos machen. Mit etwas mehr Infos täte man sich leichter. Außerdem ist das ja wirklich kein Hightec. Mit etwas Mühe kann jeder die Kabelführung verfolgen. Und mehr als ein paar Relais findet man normalerweise auch nicht vor.
+
+
+Die Branches arduino und arduinoPWM sind für die ArduinoIDE umgebaut. Die erste Version hat noch sehr geringe Änderungen und erzeugt den Ton mit Pin Befehlen. Damit sind aber nur wenige Frequenzen möglich.
+Die zweite Version nutzt alle Möglichkeiten der Arduino Libs und kann jetzt mit ms und Hz eingestellt werden. Durch diese Libs ist der Code aber größer geworden und braucht zumindest einen ATTiny45.
+Für Tests kann man die SW auf einem ArduinoUno nutzen und hat dann einen Eingang für den Start des Ablaufs und serielle Ausgaben.
