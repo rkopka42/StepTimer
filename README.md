@@ -37,9 +37,9 @@ Mittels uController kann diese etwas mehr als das einfache Relais. Zum einen hat
 
 Das Relais muß recht groß sein, da der normale Strom schon etwas 5A(auf) beträgt. Am Ende läuft der Motor (ohne Endschalter) in den Anschlag und zieht bis zu 20A !!!
 
-Der Schaltplan entstand mit einem recht einfachen freien Programm und war mein erster Versuch damit. Leider gibt es noch ein paar Fehler. Die Out In Bezeichnungen am Spannungsregler sind verkehrt herum. VREG U 5V ist etwas nach rechts verrutscht und bezeichnet den Spannungsregler. Die antiparallele Diode an der Relaisspule fehlt. Es gab kein Buzzer Symbol, daher steht dort eine Wechselstromquelle. Die ZD 5,6V würde ich eher auf 5,1V ändern.
+Der Schaltplan entstand mit einem recht einfachen freien Programm und war mein erster Versuch damit. Leider gibt es noch ein paar Fehler. VREG U 5V ist etwas nach rechts verrutscht und bezeichnet den Spannungsregler. Die antiparallele Diode an der Relaisspule fehlt. Es gab kein Buzzer Symbol, daher steht dort eine Wechselstromquelle. Die ZD 5,6V würde ich eher auf 5,1V ändern.
 
-Ich verwende einen ATTiny13 (die Angabe im Schaltplan stimmt nicht, obwohl ein 45er genauso geht), weil ich dafür ein Entwicklerboard habe und die Chips gut erhältlich sind. Da die Schaltung sehr einfach ist, habe ich alles incl. Relais auf einer Lochrasterplatine mit einer Schraubklemmenleiste untergebracht. Besser wäre es aber, das Relais extern zu halten und für die Anschlüsse 6,3mm Flachstecker vorzusehen.
+Ich verwende einen ATTiny13 (die Angabe im Schaltplan stimmt nicht, obwohl ein 45er genauso geht), weil ich dafür ein Entwicklerboard habe und die Chips gut erhältlich sind. Da die Schaltung sehr einfach ist, habe ich alles inkl. Relais auf einer Lochrasterplatine mit einer Schraubklemmenleiste untergebracht. Besser wäre es aber, das Relais extern zu halten und für die Anschlüsse 6,3mm Flachstecker vorzusehen.
 Ursprünglich war auch ein Programmieranschluß auf der Platine. Allerdings habe ich den dann aus Platzgründen entfernt. Ich mußte auch keine Änderungen am Code vornehmen, der vorher schon getestet war. Der einzige Fehler war ein fehlender Widerstand (Pull-Up) an der Resetleitung.
 
 Probleme:
